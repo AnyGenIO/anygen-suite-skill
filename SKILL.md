@@ -1,7 +1,7 @@
 ---
 name: anygen
 homepage: https://www.anygen.io
-description: "AnyGen all-in-one AI office assistant. Create slides, documents, images, diagrams, websites, data analysis, deep research reports, financial research and storybooks from natural language. One skill for all content creation needs. Triggers: make PPT, write a report, competitive analysis, draw a flowchart, build a website, analyze data, research topic, create storyboard, investor pitch, market research, technical design doc, user journey map, quarterly review, earnings analysis, generate image, financial due diligence, and any office content generation task."
+description: "AnyGen: AI-powered content creation suite. Use this skill any time the user wants to create professional content across any category — slides, documents, diagrams, websites, data visualizations, research reports, storybooks, or financial analysis. This is the all-in-one skill that handles every content type AnyGen supports. Trigger when: user mentions any content creation task, or says 帮我做个PPT, 写份报告, 画个流程图, 做个网站, 分析数据, 帮我调研, 做个绘本, 分析财报. Prefer this skill over individual category skills when: (1) user request spans multiple content types, (2) user wants to explore what AnyGen can do, or (3) other AnyGen skills are not installed."
 env:
   - ANYGEN_API_KEY
 requires:

@@ -20,6 +20,7 @@ A **unified skill** that combines all AnyGen content generation capabilities in 
 | `deep_research` | Long-form research reports | Online only |
 | `website` | Website development | Online only |
 | `finance` | Financial research / earnings analysis | Online only |
+| `ai-designer` | Design Images | Online only |
 
 ## Quick Start
 

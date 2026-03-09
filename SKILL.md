@@ -27,7 +27,7 @@ AnyGen is an **AI-powered general assistant** with the following capabilities:
 - **Doc / DOCX** — Intelligent document generation and formatting
 - **Website** — Rapid web page creation
 - **Data Analysis** — Data analysis and visualization
-- **Image** — AI image generation
+- **Image** — Design Images
 - **Storybook** — Storybook style visuals creation
 - **SmartDraw** — Diagram generation (professional / hand-drawn style)
 
@@ -112,6 +112,7 @@ Additional rules:
 | `storybook` | Storybook / whiteboard | No, task URL only |
 | `data_analysis` | Data analysis | No, task URL only |
 | `website` | Website development | No, task URL only |
+| `ai-designer` | Design Images | No, task URL only |
 
 ---
 

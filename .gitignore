@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+*.pdf
+*.html
+node_modules/
+package-lock.json
+.venv/
+.idea/
+log/

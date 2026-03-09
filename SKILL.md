@@ -107,7 +107,8 @@ Additional rules:
 | `slide` | Slides / PPT | Yes |
 | `doc` | Document / DOCX | Yes |
 | `smart_draw` | Diagram (professional / hand-drawn style) | Yes (requires render to PNG) |
-| `chat` | General mode (SuperAgent) | No, task URL only |
+| `finance` | Financial research / earnings analysis | No, task URL only |
+| `deep_research` | Long-form research reports | No, task URL only |
 | `storybook` | Storybook / whiteboard | No, task URL only |
 | `data_analysis` | Data analysis | No, task URL only |
 | `website` | Website development | No, task URL only |
@@ -152,10 +153,6 @@ Repeat until `status="ready"` with `suggested_task_params`.
 Special cases:
 - `status="ready"` on first call → proceed to Phase 2.
 - User says "just create it" → skip to Phase 3 with `create` directly.
-
-**Operation-specific notes:**
-- For `smart_draw`: describe the diagram type, components, and relationships. Do NOT paste raw file contents — files are processed server-side.
-- For `chat`/`data_analysis`/`website`/`storybook`: include extracted file content in `--message` since the API does NOT read files.
 
 ### Phase 2: Confirm with User (MANDATORY)
 
@@ -244,7 +241,7 @@ CRITICAL RULES:
 
 Your job depends on the operation type:
 
-## For slide / doc operations:
+## For slide / doc / storybook operations:
 1. Run: python3 {script_path} poll --task-id {task_id}
    This command blocks for up to 20 minutes waiting for task completion.
    Do NOT pass --output — the file will only be downloaded when the user requests it.
@@ -303,7 +300,7 @@ Your job depends on the operation type:
        You can view and edit it here: {task_url}"
       Reply EXACTLY: ANNOUNCE_SKIP
 
-## For chat / storybook / data_analysis / website operations:
+## For finance / deep_research / data_analysis / website operations:
 1. Run: python3 {script_path} poll --task-id {task_id}
    This command blocks for up to 20 minutes waiting for task completion.
    No --output needed — results are viewed online.

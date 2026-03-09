@@ -19,7 +19,7 @@ A **unified skill** that combines all AnyGen content generation capabilities in 
 | `data_analysis` | Data analysis & visualization | Online only |
 | `deep_research` | Long-form research reports | Online only |
 | `website` | Website development | Online only |
-| `chat` | General AI conversation (SuperAgent) | Online only |
+| `finance` | Financial research / earnings analysis | Online only |
 
 ## Quick Start
 
@@ -95,7 +95,7 @@ A **unified skill** that combines all AnyGen content generation capabilities in 
 
 | Parameter | Short | Description |
 |-----------|-------|-------------|
-| --operation | -o | Operation type: slide, doc, smart_draw, chat, etc. |
+| --operation | -o | Operation type: slide, doc, smart_draw, storybook, data_analysis, website, finance, deep_research |
 | --prompt | -p | Content description |
 | --language | -l | Language: zh-CN or en-US |
 | --slide-count | -c | Number of PPT pages |

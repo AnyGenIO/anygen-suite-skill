@@ -19,7 +19,7 @@
 | `data_analysis` | 数据分析与可视化 | 仅在线查看 |
 | `deep_research` | 深度调研报告 | 仅在线查看 |
 | `website` | 网站开发 | 仅在线查看 |
-| `chat` | 通用 AI 对话（SuperAgent） | 仅在线查看 |
+| `finance` | 财报研究/金融分析 | 仅在线查看 |
 
 ## 快速开始
 
@@ -95,7 +95,7 @@
 
 | 参数 | 简写 | 说明 |
 |------|------|------|
-| --operation | -o | 操作类型：slide、doc、smart_draw、chat 等 |
+| --operation | -o | 操作类型：slide、doc、smart_draw、storybook、data_analysis、website、finance、deep_research |
 | --prompt | -p | 内容描述 |
 | --language | -l | 语言：zh-CN 或 en-US |
 | --slide-count | -c | PPT 页数 |

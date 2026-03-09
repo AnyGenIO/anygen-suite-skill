@@ -360,6 +360,109 @@ Follow up naturally: "Here's your file! You can also edit online at [Task URL]."
 
 Tell the user: "I've started generating your content. It usually takes about 10–15 minutes. You can check the progress here: [Task URL]. Let me know when you'd like me to check if it's ready!"
 
+### Phase 5: Multi-turn Conversation (Modify Completed Content)
+
+After a task has completed (Phase 4 finished), the user may request modifications such as:
+- "Change the title on page 3 to 'Product Overview'"
+- "Add a summary slide at the end"
+- "Make the color scheme warmer"
+- "Replace the chart on page 5 with a pie chart"
+
+When the user requests changes to an **already-completed** task, use the multi-turn conversation API instead of creating a new task.
+
+**IMPORTANT**: You MUST remember the `task_id` from Phase 3 throughout the conversation. When the user asks for modifications, use the same `task_id`.
+
+**Supported operations for multi-turn:** `slide`, `doc`, `smart_draw`, `storybook` (content types that produce editable files).
+
+#### Step 1: Send Modification Request
+
+```bash
+python3 scripts/anygen.py send-message --task-id {task_id} --message "Change the title on page 3 to 'Product Overview'"
+# Output: Message ID: 123, Status: processing
+```
+
+Save the returned `Message ID` — you'll need it to detect the AI reply.
+
+**Immediately tell the user** (natural language, NO internal terms):
+- "I'm working on your changes now. I'll let you know when they're done."
+
+#### Step 2: Monitor for AI Reply
+
+> **Requires `sessions_spawn`.** If unavailable, skip to **Multi-turn Fallback** below.
+
+**CRITICAL**: When calling `sessions_spawn`, you MUST set a timeout of at least 10 minutes (600 seconds). Modifications are faster than initial generation.
+
+Example spawn call syntax:
+
+```
+sessions_spawn(
+    prompt=<subagent prompt below>,
+    runTimeoutSeconds=600  # REQUIRED: 10 minutes (600s)
+)
+```
+
+**Subagent prompt** (it has NO conversation context):
+
+```
+You are a background monitor for a content modification task.
+You MUST strictly follow every instruction below. Do not skip, reorder, or improvise any step.
+
+Task ID: {task_id}
+Task URL: {task_url}
+Script: {script_path}
+User Message ID: {user_message_id}
+User Language: {user_language}
+
+IMPORTANT: This monitoring task may take up to 8 minutes. Ensure your execution timeout is at least 10 minutes.
+
+CRITICAL RULES:
+- You MUST reply in {user_language}.
+- After completing ALL steps (including sending messages to the user), your FINAL reply
+  MUST be EXACTLY "ANNOUNCE_SKIP" — nothing else. This prevents the main session from
+  sending duplicate messages.
+- Do NOT say anything beyond what is specified below. No greetings, no extra commentary.
+- NEVER include technical terms like "task_id", "message_id", "poll", "sub-agent",
+  "API", "script", "workspace", file paths, or status labels in any message to the user.
+
+Your job:
+1. Run: python3 {script_path} get-messages --task-id {task_id} --wait --since-id {user_message_id}
+   This command blocks until the AI reply is completed.
+
+2. On success (AI reply received):
+   a. Send a text message to the user (in {user_language}, natural tone):
+      "Your changes are done! You can view the updated content here: {task_url}
+       If you need further adjustments, just let me know."
+   b. Reply EXACTLY: ANNOUNCE_SKIP
+
+3. On failure / timeout:
+   a. Send a text message to the user (in {user_language}):
+      "The modification didn't complete as expected. You can check the details here: {task_url}"
+   b. Reply EXACTLY: ANNOUNCE_SKIP
+```
+
+Do NOT wait for the background monitor. Do NOT tell the user you launched it.
+
+#### Multi-turn Fallback (no background monitoring)
+
+Tell the user: "I've sent your changes. You can check the progress here: [Task URL]. Let me know when you'd like me to check if it's done!"
+
+When the user asks you to check, use:
+
+```bash
+python3 scripts/anygen.py get-messages --task-id {task_id} --limit 5
+```
+
+Look for a `completed` assistant message and relay the content to the user naturally.
+
+#### Subsequent Modifications
+
+The user can request multiple rounds of modifications. Each time, repeat Phase 5:
+1. `send-message` with the new modification request
+2. Background-monitor with `get-messages --wait`
+3. Notify the user with the online link when done
+
+All modifications use the **same `task_id`** — do NOT create a new task.
+
 ---
 
 ## Error Handling
@@ -380,6 +483,39 @@ Tell the user: "I've started generating your content. It usually takes about 10�
 | Hand-drawn | `excalidraw` | `.json` | `render-diagram.sh excalidraw input.json output.png` |
 
 **render-diagram.sh options:** `--scale <n>` (default: 2), `--background <hex>` (default: #ffffff), `--padding <px>` (default: 20)
+
+## Multi-turn Commands
+
+### send-message
+
+Send a modification request to an existing task:
+
+```bash
+python3 scripts/anygen.py send-message --task-id task_xxx --message "Change title on page 3"
+python3 scripts/anygen.py send-message --task-id task_xxx --message "Add a summary slide" --file-token tk_abc123
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| --task-id | Task ID from create command |
+| --message, -m | Modification request text |
+| --file-token | Optional file token for reference material |
+
+### get-messages
+
+Get conversation history for a task:
+
+```bash
+python3 scripts/anygen.py get-messages --task-id task_xxx --limit 5
+python3 scripts/anygen.py get-messages --task-id task_xxx --wait --since-id 123
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| --task-id | Task ID |
+| --limit | Number of messages to retrieve |
+| --wait | Block until new AI reply is completed |
+| --since-id | Only return messages after this ID |
 
 ## Notes
 

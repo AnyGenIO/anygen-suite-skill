@@ -665,6 +665,126 @@ def query_task_status(api_key, task_id, extra_headers=None, as_json=False):
     return task
 
 
+# ============ Multi-turn Conversation ============
+
+def send_message(api_key, task_id, content, files=None, extra_headers=None):
+    """Send a message to an existing task. Returns immediately."""
+    auth_token = make_auth_token(api_key)
+
+    headers = {
+        "Authorization": auth_token,
+        "Content-Type": "application/json",
+    }
+    if extra_headers:
+        headers.update(extra_headers)
+
+    body = {"auth_token": auth_token, "content": content}
+    if files:
+        body["files"] = files
+
+    try:
+        log_info(f"Sending message to task: {task_id}")
+        response = requests.post(
+            f"{API_BASE}/v1/openapi/tasks/{task_id}/messages",
+            json=body,
+            headers=headers,
+            timeout=30,
+        )
+        log_request_id(response)
+        if response.status_code != 200:
+            log_error(f"HTTP error: {response.status_code}")
+            log_error(f"Response: {response.text[:500]}")
+            return None
+
+        result = response.json()
+    except requests.RequestException as e:
+        log_error(f"Request failed: {e}")
+        return None
+    except json.JSONDecodeError:
+        log_error(f"Response parse failed: {response.text[:500]}")
+        return None
+
+    msg = result.get("message", {})
+    status = result.get("status", "unknown")
+    log_success(f"Message sent! id={msg.get('id')}, status={status}")
+    print(f"Message ID: {msg.get('id')}")
+    print(f"Status: {status}")
+    return result
+
+
+def get_messages(api_key, task_id, limit=10, cursor=None, extra_headers=None):
+    """Get messages for a task. Supports polling and pagination."""
+    auth_token = make_auth_token(api_key)
+
+    headers = {"Authorization": auth_token}
+    if extra_headers:
+        headers.update(extra_headers)
+
+    params = {"limit": limit}
+    if cursor:
+        params["cursor"] = cursor
+
+    try:
+        response = requests.get(
+            f"{API_BASE}/v1/openapi/tasks/{task_id}/messages",
+            headers=headers,
+            params=params,
+            timeout=30,
+        )
+        log_request_id(response)
+        if response.status_code != 200:
+            log_error(f"HTTP error: {response.status_code}")
+            log_error(f"Response: {response.text[:500]}")
+            return None
+
+        result = response.json()
+    except requests.RequestException as e:
+        log_error(f"Request failed: {e}")
+        return None
+    except json.JSONDecodeError:
+        log_error(f"Response parse failed: {response.text[:500]}")
+        return None
+
+    return result
+
+
+def poll_messages(api_key, task_id, since_message_id, limit=10,
+                  max_time=MAX_POLL_TIME, extra_headers=None):
+    """Poll messages until an assistant reply is completed after since_message_id."""
+    log_info(f"Waiting for AI reply on task: {task_id}")
+
+    start_time = time.time()
+
+    while True:
+        elapsed = time.time() - start_time
+        if elapsed > max_time:
+            log_error(f"Polling timeout ({max_time}s)")
+            return None
+
+        result = get_messages(api_key, task_id, limit=limit, extra_headers=extra_headers)
+        if not result:
+            time.sleep(POLL_INTERVAL)
+            continue
+
+        messages = result.get("messages", [])
+        task_snapshot = result.get("task_snapshot", {})
+
+        # Find the latest assistant message newer than since_message_id
+        for msg in messages:
+            if (msg.get("role") == "assistant"
+                    and msg.get("id", 0) > since_message_id
+                    and msg.get("status") == "completed"):
+                log_success("AI reply received!")
+                print(f"[REPLY] {msg.get('content', '')}")
+                if task_snapshot:
+                    snap_status = task_snapshot.get("status", "")
+                    can_export = task_snapshot.get("can_export", False)
+                    print(f"[SNAPSHOT] status={snap_status}, can_export={can_export}")
+                return msg
+
+        time.sleep(POLL_INTERVAL)
+
+
 def run_full_workflow(api_key, operation, prompt, output_dir, extra_headers=None,
                       style=None, file_tokens=None, **kwargs):
     """Run the full workflow: create -> poll -> download."""
@@ -802,6 +922,26 @@ Examples:
                            help="File token from upload (can be repeated)")
     run_parser.add_argument("--style", "-s", help="Style preference")
     run_parser.add_argument("--output", help="Output directory (optional)")
+
+    # ---- send-message command ----
+    send_msg_parser = subparsers.add_parser("send-message",
+                                            help="Send a message to an existing task (multi-turn)")
+    add_common_args(send_msg_parser)
+    send_msg_parser.add_argument("--task-id", required=True, help="Task ID")
+    send_msg_parser.add_argument("--message", "-m", required=True, help="Message content")
+    send_msg_parser.add_argument("--file-token", action="append", dest="file_tokens",
+                                  help="File token from upload (can be repeated)")
+
+    # ---- get-messages command ----
+    get_msgs_parser = subparsers.add_parser("get-messages",
+                                            help="Get messages for a task")
+    add_common_args(get_msgs_parser)
+    get_msgs_parser.add_argument("--task-id", required=True, help="Task ID")
+    get_msgs_parser.add_argument("--limit", type=int, default=10, help="Number of messages")
+    get_msgs_parser.add_argument("--wait", action="store_true",
+                                  help="Wait for AI reply (blocking)")
+    get_msgs_parser.add_argument("--since-id", type=int, default=0,
+                                  help="Only return messages after this ID")
 
     # ---- config command ----
     config_parser = subparsers.add_parser("config", help="Manage configuration")
@@ -971,6 +1111,50 @@ Examples:
             style=args.style
         )
         sys.exit(0 if success else 1)
+
+    elif args.command == "send-message":
+        files = None
+        if args.file_tokens:
+            files = [{"token": ft} for ft in args.file_tokens]
+        result = send_message(
+            api_key=api_key,
+            task_id=args.task_id,
+            content=args.message,
+            files=files,
+            extra_headers=extra_headers
+        )
+        sys.exit(0 if result else 1)
+
+    elif args.command == "get-messages":
+        if args.wait:
+            # Blocking wait for AI reply
+            msg = poll_messages(
+                api_key=api_key,
+                task_id=args.task_id,
+                since_message_id=args.since_id,
+                limit=args.limit,
+                extra_headers=extra_headers
+            )
+            sys.exit(0 if msg else 1)
+        else:
+            # Single query
+            result = get_messages(
+                api_key=api_key,
+                task_id=args.task_id,
+                limit=args.limit,
+                extra_headers=extra_headers
+            )
+            if result:
+                messages = result.get("messages", [])
+                for msg in messages:
+                    role = msg.get("role", "")
+                    content = msg.get("content", "")
+                    status = msg.get("status", "")
+                    msg_id = msg.get("id", "")
+                    print(f"[{role}] (id={msg_id}, status={status}) {content[:200]}")
+                sys.exit(0)
+            else:
+                sys.exit(1)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,12 @@
-# AnyGen Content Generator
+# AnyGen Suite (All-in-One)
 
 [中文](./README_zh.md)
 
-A Claude Code skill for generating AI content using AnyGen OpenAPI.
+> All-in-one AI content generation skill for [OpenClaw](https://github.com/openclaw/openclaw) / Claude Code / Cursor
+
+A **unified skill** that combines all AnyGen content generation capabilities in a single package. One installation, all features.
+
+> 💡 **Prefer modular installation?** Check out [anygen-skills](https://github.com/AnyGenIO/anygen-skills) for individual, task-specific skills.
 
 ## Features
 
@@ -13,19 +17,29 @@ A Claude Code skill for generating AI content using AnyGen OpenAPI.
 | `smart_draw` | Diagram generation (professional / hand-drawn) | Yes (.png) |
 | `storybook` | Create storybooks | Yes (.pptx) |
 | `data_analysis` | Data analysis & visualization | Online only |
+| `deep_research` | Long-form research reports | Online only |
 | `website` | Website development | Online only |
 | `chat` | General AI conversation (SuperAgent) | Online only |
 
 ## Quick Start
 
-1. **Get API Key** from [AnyGen](https://www.anygen.io/home?auto_create_openclaw_key=1)
+1. **Install**:
+   ```bash
+   # OpenClaw
+   git clone https://github.com/AnyGenIO/anygen-suite-skill.git ~/.openclaw/skills/anygen-suite
 
-2. **Configure API Key**:
+   # Claude Code
+   git clone https://github.com/AnyGenIO/anygen-suite-skill.git ~/.claude/skills/anygen-suite
+   ```
+
+2. **Get API Key** from [AnyGen](https://www.anygen.io/home?auto_create_openclaw_key=1)
+
+3. **Configure API Key**:
    ```bash
    python3 scripts/anygen.py config set api_key "sk-xxx"
    ```
 
-3. **Use dialogue mode** (recommended — multi-turn requirement analysis):
+4. **Use dialogue mode** (recommended — multi-turn requirement analysis):
    ```bash
    # Start requirement analysis
    python3 scripts/anygen.py prepare \
@@ -44,14 +58,14 @@ A Claude Code skill for generating AI content using AnyGen OpenAPI.
      --prompt "<prompt from suggested_task_params>"
    ```
 
-4. **Quick mode** (skip dialogue, create directly):
+5. **Quick mode** (skip dialogue, create directly):
    ```bash
    python3 scripts/anygen.py create \
      --operation slide \
      --prompt "A presentation about AI applications"
    ```
 
-5. **Monitor and download**:
+6. **Monitor and download**:
    ```bash
    # Poll until completion
    python3 scripts/anygen.py poll --task-id task_xxx
@@ -90,6 +104,10 @@ A Claude Code skill for generating AI content using AnyGen OpenAPI.
 | --style | -s | Style preference |
 | --file-token | | File token from upload (repeatable) |
 | --export-format | -f | Export format (slide/storybook: pptx/image/thumbnail, doc: docx/image/thumbnail, smart_draw: drawio/excalidraw) |
+
+## Related Projects
+
+- **[anygen-skills](https://github.com/AnyGenIO/anygen-skills)** — Modular skills collection (install individual skills as needed)
 
 ## More Details
 

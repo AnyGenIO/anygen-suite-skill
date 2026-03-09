@@ -1,7 +1,7 @@
 ---
 name: anygen
 homepage: https://www.anygen.io
-description: "AI office content generator by AnyGen. Create professional slides, documents, websites, diagrams, data tables, and research reports from natural language prompts. Triggers: make PPT/slides/deck, generate document/report, draw diagram/flowchart/architecture/mind map/UML/ER diagram/sequence diagram/org chart/whiteboard, build website, organize data into table, analyze earnings, write deep research, visualize structure/process/flow. Output: auto-downloaded local file + online task URL."
+description: "AnyGen all-in-one AI office assistant. Create slides, documents, images, diagrams, websites, data analysis, deep research reports, financial research and storybooks from natural language. One skill for all content creation needs. Triggers: make PPT, write a report, competitive analysis, draw a flowchart, build a website, analyze data, research topic, create storyboard, investor pitch, market research, technical design doc, user journey map, quarterly review, earnings analysis, generate image, financial due diligence, and any office content generation task."
 env:
   - ANYGEN_API_KEY
 requires:

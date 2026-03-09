@@ -1,8 +1,12 @@
-# AnyGen 内容生成器
+# AnyGen Suite（一体化版）
 
 [English](./README.md)
 
-一个用于通过 AnyGen OpenAPI 生成 AI 内容的 Claude Code 技能。
+> 适用于 [OpenClaw](https://github.com/openclaw/openclaw) / Claude Code / Cursor 的一体化 AI 内容生成技能
+
+**统一技能**，将所有 AnyGen 内容生成能力整合在一个包中。一次安装，全部功能。
+
+> 💡 **想要模块化安装？** 查看 [anygen-skills](https://github.com/AnyGenIO/anygen-skills)，按需安装独立的任务型技能。
 
 ## 功能特性
 
@@ -13,19 +17,29 @@
 | `smart_draw` | 图表生成（专业风格 / 手绘风格） | 支持 (.png) |
 | `storybook` | 创建故事板 | 支持 (.pptx) |
 | `data_analysis` | 数据分析与可视化 | 仅在线查看 |
+| `deep_research` | 深度调研报告 | 仅在线查看 |
 | `website` | 网站开发 | 仅在线查看 |
 | `chat` | 通用 AI 对话（SuperAgent） | 仅在线查看 |
 
 ## 快速开始
 
-1. **获取 API Key**：访问 [AnyGen](https://www.anygen.io/home?auto_create_openclaw_key=1)
+1. **安装**：
+   ```bash
+   # OpenClaw
+   git clone https://github.com/AnyGenIO/anygen-suite-skill.git ~/.openclaw/skills/anygen-suite
 
-2. **配置 API Key**：
+   # Claude Code
+   git clone https://github.com/AnyGenIO/anygen-suite-skill.git ~/.claude/skills/anygen-suite
+   ```
+
+2. **获取 API Key**：访问 [AnyGen](https://www.anygen.io/home?auto_create_openclaw_key=1)
+
+3. **配置 API Key**：
    ```bash
    python3 scripts/anygen.py config set api_key "sk-xxx"
    ```
 
-3. **对话模式**（推荐 — 多轮需求分析）：
+4. **对话模式**（推荐 — 多轮需求分析）：
    ```bash
    # 开始需求分析
    python3 scripts/anygen.py prepare \
@@ -44,14 +58,14 @@
      --prompt "<suggested_task_params 中的 prompt>"
    ```
 
-4. **快速模式**（跳过对话，直接创建）：
+5. **快速模式**（跳过对话，直接创建）：
    ```bash
    python3 scripts/anygen.py create \
      --operation slide \
      --prompt "关于人工智能应用的演示文稿"
    ```
 
-5. **监控与下载**：
+6. **监控与下载**：
    ```bash
    # 轮询直到完成
    python3 scripts/anygen.py poll --task-id task_xxx
@@ -90,6 +104,10 @@
 | --style | -s | 风格偏好 |
 | --file-token | | 上传文件后获取的 file_token（可重复） |
 | --export-format | -f | 导出格式（slide/storybook: pptx/image/thumbnail, doc: docx/image/thumbnail, smart_draw: drawio/excalidraw） |
+
+## 相关项目
+
+- **[anygen-skills](https://github.com/AnyGenIO/anygen-skills)** — 模块化技能集合（按需安装独立技能）
 
 ## 详细文档
 

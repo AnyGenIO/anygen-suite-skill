@@ -98,13 +98,8 @@ A **unified skill** that combines all AnyGen content generation capabilities in 
 |-----------|-------|-------------|
 | --operation | -o | Operation type: slide, doc, smart_draw, storybook, data_analysis, website, finance, deep_research |
 | --prompt | -p | Content description |
-| --language | -l | Language: zh-CN or en-US |
-| --slide-count | -c | Number of PPT pages |
-| --template | -t | Slide template |
-| --ratio | -r | Slide ratio: 16:9 or 4:3 |
-| --style | -s | Style preference |
 | --file-token | | File token from upload (repeatable) |
-| --export-format | -f | Export format (slide/storybook: pptx/image/thumbnail, doc: docx/image/thumbnail, smart_draw: drawio/excalidraw) |
+| --export-format | -f | Export format (smart_draw: drawio/excalidraw) |
 
 ## Related Projects
 
@@ -112,7 +107,7 @@ A **unified skill** that combines all AnyGen content generation capabilities in 
 
 ## More Details
 
-See [SKILL.md](./SKILL.md) for complete documentation.
+See [SKILL.md](anygen-suite/SKILL.md) for complete documentation.
 
 ## License
 

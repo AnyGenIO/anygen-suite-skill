@@ -1,26 +1,15 @@
 #!/usr/bin/env python3
-"""
-AnyGen OpenAPI Client
-
-Usage:
-    python3 anygen.py create --api-key sk-xxx --operation slide --prompt "..."
-    python3 anygen.py poll --api-key sk-xxx --task-id task_xxx
-    python3 anygen.py thumbnail --api-key sk-xxx --task-id task_xxx --output /tmp/
-    python3 anygen.py status --api-key sk-xxx --task-id task_xxx [--json]
-    python3 anygen.py download --api-key sk-xxx --task-id task_xxx --output ./
-    python3 anygen.py run --api-key sk-xxx --operation slide --prompt "..." --output ./
-    python3 anygen.py upload --api-key sk-xxx --file ./document.pdf
-    python3 anygen.py prepare --api-key sk-xxx --message "I need a slide about AI"
-"""
 
 import argparse
-import base64
 import json
-import os
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
+
+from auth import load_config, save_config, get_api_key, CONFIG_FILE, ENV_API_KEY
+from io import BytesIO
+from fileutil import read_file_bytes, read_json, write_json, write_bytes
 
 try:
     import requests
@@ -33,46 +22,8 @@ API_BASE = "https://www.anygen.io"
 POLL_INTERVAL = 3  # seconds
 MAX_POLL_TIME = 1200  # 20 minutes
 OPENCLAW_WORKSPACE = Path.home() / ".openclaw" / "workspace"
-CONFIG_DIR = Path.home() / ".config" / "anygen"
-CONFIG_FILE = CONFIG_DIR / "config.json"
-ENV_API_KEY = "ANYGEN_API_KEY"
+SKILL_NAME = "anygen-suite"
 
-
-
-def load_config():
-    """Load configuration from file."""
-    if not CONFIG_FILE.exists():
-        return {}
-    try:
-        with open(CONFIG_FILE, "r") as f:
-            return json.load(f)
-    except (json.JSONDecodeError, IOError):
-        return {}
-
-
-def save_config(config):
-    """Save configuration to file."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=2)
-    # Set file permissions to owner read/write only (600)
-    CONFIG_FILE.chmod(0o600)
-
-
-def get_api_key(args_api_key=None):
-    """Get API key with priority: command line > env var > config file."""
-    # 1. Command line argument
-    if args_api_key:
-        return args_api_key
-
-    # 2. Environment variable
-    env_key = os.environ.get(ENV_API_KEY)
-    if env_key:
-        return env_key
-
-    # 3. Config file
-    config = load_config()
-    return config.get("api_key")
 
 
 def log_info(msg):
@@ -121,65 +72,35 @@ def make_auth_token(api_key):
     return api_key if api_key.startswith("Bearer ") else f"Bearer {api_key}"
 
 
-def encode_file(file_path):
-    """Encode file to base64."""
-    path = Path(file_path)
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
-
-    with open(path, "rb") as f:
-        content = f.read()
-
-    # Determine MIME type
-    suffix = path.suffix.lower()
-    mime_types = {
-        ".pdf": "application/pdf",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".txt": "text/plain",
-        ".doc": "application/msword",
-        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ".ppt": "application/vnd.ms-powerpoint",
-        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    }
-    mime_type = mime_types.get(suffix, "application/octet-stream")
-
-    return {
-        "file_name": path.name,
-        "file_type": mime_type,
-        "file_data": base64.b64encode(content).decode("utf-8")
-    }
-
 
 # ============ Upload Command ============
 
 def upload_file(api_key, file_path, extra_headers=None):
     """Upload a file via multipart/form-data, returns file_token."""
-    path = Path(file_path)
-    if not path.exists():
-        log_error(f"File not found: {file_path}")
+    try:
+        filename, content, size = read_file_bytes(file_path)
+    except ValueError as e:
+        log_error(str(e))
         return None
 
     auth_token = make_auth_token(api_key)
-    log_info(f"Uploading file: {path.name} ({path.stat().st_size} bytes)")
+    log_info(f"Uploading file: {filename} ({size} bytes)")
 
     headers = {"Authorization": auth_token}
     if extra_headers:
         headers.update(extra_headers)
 
     try:
-        with open(path, "rb") as f:
-            files = {"file": (path.name, f)}
-            data = {"filename": path.name}
-            response = requests.post(
-                f"{API_BASE}/v1/openapi/files/upload",
-                files=files,
-                data=data,
-                headers=headers,
-                timeout=60
-            )
+        files = {"file": (filename, BytesIO(content))}
+        data = {"filename": filename}
+        response = requests.post(
+            f"{API_BASE}/v1/openapi/files/upload",
+            files=files,
+            data=data,
+            headers=headers,
+            timeout=60,
+            allow_redirects=False,
+        )
 
         log_request_id(response)
         log_info(f"Response status: {response.status_code}")
@@ -210,7 +131,8 @@ def upload_file(api_key, file_path, extra_headers=None):
 
 # ============ Prepare Command ============
 
-def prepare_task(api_key, messages, file_tokens=None, extra_headers=None):
+def prepare_task(api_key, messages, file_tokens=None, prepare_session_id=None,
+                 base_suggested_task_params=None, extra_headers=None):
     """Call the prepare API for multi-turn requirement analysis."""
     auth_token = make_auth_token(api_key)
 
@@ -220,6 +142,13 @@ def prepare_task(api_key, messages, file_tokens=None, extra_headers=None):
     }
     if file_tokens:
         body["file_tokens"] = file_tokens
+    if prepare_session_id:
+        body["prepare_session_id"] = prepare_session_id
+    if base_suggested_task_params:
+        body["base_suggested_task_params"] = base_suggested_task_params
+
+    # Add extra for tracking
+    body["extra"] = {"create_from": "skill", "skill_name": SKILL_NAME}
 
     headers = {"Content-Type": "application/json"}
     if extra_headers:
@@ -231,7 +160,8 @@ def prepare_task(api_key, messages, file_tokens=None, extra_headers=None):
             f"{API_BASE}/v1/openapi/tasks/prepare",
             json=body,
             headers=headers,
-            timeout=120
+            timeout=120,
+            allow_redirects=False,
         )
 
         log_request_id(response)
@@ -260,14 +190,29 @@ def run_prepare_interactive(api_key, initial_message, file_tokens=None,
     """Run prepare in interactive or single-shot mode."""
     messages = []
     loaded_file_tokens = set()
+    prepare_session_id = None
+    base_suggested_task_params = None
 
     # Load existing conversation from file
     if input_file:
         try:
-            with open(input_file, "r") as f:
-                data = json.load(f)
+            input_path = Path(input_file)
+            save_path = Path(save_file) if save_file else None
+            same_input_output = (
+                save_path is not None and
+                input_path.expanduser().resolve(strict=False) == save_path.expanduser().resolve(strict=False)
+            )
+
+            if not input_path.exists() and same_input_output:
+                input_path.parent.mkdir(parents=True, exist_ok=True)
+                write_json(input_path, {"messages": []})
+                log_info(f"Input file not found, initialized a new conversation file: {input_path}")
+
+            data = read_json(input_path)
             messages = data.get("messages", [])
             loaded_file_tokens = set(data.get("file_tokens", []))
+            prepare_session_id = data.get("prepare_session_id")
+            base_suggested_task_params = data.get("suggested_task_params")
             if loaded_file_tokens:
                 file_tokens = (file_tokens or []) + list(loaded_file_tokens)
             log_info(f"Loaded conversation history: {len(messages)} messages")
@@ -290,7 +235,14 @@ def run_prepare_interactive(api_key, initial_message, file_tokens=None,
         log_error("No messages. Use --message or --input to load conversation history")
         return None
 
-    result = prepare_task(api_key, messages, file_tokens, extra_headers)
+    result = prepare_task(
+        api_key=api_key,
+        messages=messages,
+        file_tokens=file_tokens,
+        prepare_session_id=prepare_session_id,
+        base_suggested_task_params=base_suggested_task_params,
+        extra_headers=extra_headers,
+    )
     if not result:
         return None
 
@@ -300,6 +252,8 @@ def run_prepare_interactive(api_key, initial_message, file_tokens=None,
     is_ready = status == "ready"
     suggested = result.get("suggested_task_params")
     updated_messages = result.get("messages", messages)
+    prepare_session_id = result.get("prepare_session_id") or prepare_session_id
+    base_suggested_task_params = suggested or base_suggested_task_params
 
     print()
     print("=" * 60)
@@ -311,22 +265,10 @@ def run_prepare_interactive(api_key, initial_message, file_tokens=None,
         print()
         log_success("Requirement analysis complete! Suggested task params:")
         print(f"  Operation: {suggested.get('operation', 'N/A')}")
-        prompt_preview = suggested.get('prompt', '')
-        if len(prompt_preview) > 200:
-            prompt_preview = prompt_preview[:200] + "..."
-        print(f"  Prompt: {prompt_preview}")
+        print(f"  Prompt:")
+        print(suggested.get('prompt', ''))
         if suggested.get("file_tokens"):
             print(f"  File Tokens: {', '.join(suggested['file_tokens'])}")
-        print()
-        print("You can create the task with:")
-        cmd_parts = [
-            "python3 anygen.py create",
-            f"--operation {suggested.get('operation', 'chat')}",
-            f"--prompt \"{suggested.get('prompt', '')}\"",
-        ]
-        for ft in (suggested.get("file_tokens") or []):
-            cmd_parts.append(f"--file-token {ft}")
-        print(f"  {' '.join(cmd_parts)}")
     else:
         print()
         log_info("Conversation in progress. Continue with the prepare command:")
@@ -337,12 +279,12 @@ def run_prepare_interactive(api_key, initial_message, file_tokens=None,
         save_data = {
             "messages": updated_messages,
             "file_tokens": file_tokens or [],
+            "prepare_session_id": prepare_session_id,
             "status": status,
-            "suggested_task_params": suggested,
+            "suggested_task_params": base_suggested_task_params,
         }
         try:
-            with open(save_file, "w") as f:
-                json.dump(save_data, f, indent=2, ensure_ascii=False)
+            write_json(save_file, save_data)
             log_info(f"Conversation saved to: {save_file}")
         except IOError as e:
             log_error(f"Failed to save conversation: {e}")
@@ -352,60 +294,30 @@ def run_prepare_interactive(api_key, initial_message, file_tokens=None,
 
 # ============ Create Task ============
 
-def create_task(api_key, operation, prompt, language=None, slide_count=None,
-                template=None, ratio=None, export_format=None, files=None,
-                file_tokens=None, extra_headers=None, style=None):
+def create_task(api_key, operation, prompt, export_format=None,
+                file_tokens=None, extra_headers=None):
     """Create an async generation task."""
     log_info("Creating task...")
 
     auth_token = make_auth_token(api_key)
 
-    # Enhance prompt with style if provided
-    final_prompt = prompt
-    if style:
-        final_prompt = f"{prompt}\n\nStyle requirement: {style}"
-        log_info(f"Style applied: {style}")
-
     # Build request body
     body = {
         "auth_token": auth_token,
         "operation": operation,
-        "prompt": final_prompt
+        "prompt": prompt
     }
 
-    if language:
-        body["language"] = language
-
-    # Slide-specific parameters
-    if operation == "slide":
-        if slide_count:
-            body["slide_count"] = slide_count
-        if template:
-            body["template"] = template
-        if ratio:
-            body["ratio"] = ratio
-
-    # Export format
     if export_format:
         body["export_format"] = export_format
-
-    # Legacy base64 file encoding
-    if files:
-        encoded_files = []
-        for file_path in files:
-            try:
-                encoded_files.append(encode_file(file_path))
-                log_info(f"Attachment added: {file_path}")
-            except FileNotFoundError as e:
-                log_error(str(e))
-                return None
-        if encoded_files:
-            body["files"] = encoded_files
 
     # File tokens from upload API
     if file_tokens:
         body["file_tokens"] = file_tokens
         log_info(f"Added {len(file_tokens)} file token(s)")
+
+    # Add extra for tracking
+    body["extra"] = {"create_from": "skill", "skill_name": SKILL_NAME}
 
     # Build headers
     headers = {"Content-Type": "application/json"}
@@ -419,7 +331,8 @@ def create_task(api_key, operation, prompt, language=None, slide_count=None,
             f"{API_BASE}/v1/openapi/tasks",
             json=body,
             headers=headers,
-            timeout=30
+            timeout=30,
+            allow_redirects=False,
         )
         log_request_id(response)
         log_info(f"Response status: {response.status_code}")
@@ -459,7 +372,8 @@ def query_task(api_key, task_id, extra_headers=None):
         response = requests.get(
             f"{API_BASE}/v1/openapi/tasks/{task_id}",
             headers=headers,
-            timeout=30
+            timeout=30,
+            allow_redirects=False,
         )
         log_request_id(response)
         return response.json()
@@ -479,7 +393,7 @@ def _download_to_local(file_url, file_name, output_dir):
     log_info("Downloading file...")
 
     try:
-        response = requests.get(file_url, timeout=120)
+        response = requests.get(file_url, timeout=120, allow_redirects=False)
         response.raise_for_status()
     except requests.RequestException as e:
         log_error(f"Download failed: {e}")
@@ -497,8 +411,7 @@ def _download_to_local(file_url, file_name, output_dir):
         while file_path.exists():
             file_path = output_path / f"{stem}_{counter}{suffix}"
             counter += 1
-    with open(file_path, "wb") as f:
-        f.write(response.content)
+    write_bytes(file_path, response.content)
 
     log_success(f"File saved: {file_path}")
     return str(file_path)
@@ -620,51 +533,6 @@ def download_thumbnail(api_key, task_id, output_dir, extra_headers=None):
     return False
 
 
-def query_task_status(api_key, task_id, extra_headers=None, as_json=False):
-    """Single non-blocking query of task status. Returns task dict or None."""
-    task = query_task(api_key, task_id, extra_headers)
-    if not task:
-        return None
-
-    status = task.get("status")
-    progress = task.get("progress", 0)
-    output = task.get("output", {})
-
-    if as_json:
-        result = {
-            "task_id": task_id,
-            "status": status,
-            "progress": progress,
-        }
-        if status == "completed":
-            if output.get("file_url"):
-                result["file_url"] = output["file_url"]
-            if output.get("file_name"):
-                result["file_name"] = output["file_name"]
-            if output.get("thumbnail_url"):
-                result["thumbnail_url"] = output["thumbnail_url"]
-            result["task_url"] = output.get("task_url", f"{API_BASE}/task/{task_id}")
-        elif status == "failed":
-            result["error"] = task.get("error", "Unknown error")
-        print(json.dumps(result, ensure_ascii=False))
-    else:
-        parts = [f"[STATUS] task_id={task_id} status={status} progress={progress}"]
-        if status == "completed" and output.get("file_name"):
-            parts.append(f"file_name={output['file_name']}")
-        if status == "completed" and output.get("thumbnail_url"):
-            parts.append(f"thumbnail_url={output['thumbnail_url']}")
-        if status == "completed" and output.get("file_url"):
-            parts.append(f"file_url={output['file_url']}")
-        if status == "completed":
-            task_url = output.get("task_url", f"{API_BASE}/task/{task_id}")
-            parts.append(f"task_url={task_url}")
-        if status == "failed":
-            parts.append(f"error={task.get('error', 'Unknown error')}")
-        print(" ".join(parts))
-
-    return task
-
-
 # ============ Multi-turn Conversation ============
 
 def send_message(api_key, task_id, content, files=None, extra_headers=None):
@@ -682,6 +550,9 @@ def send_message(api_key, task_id, content, files=None, extra_headers=None):
     if files:
         body["files"] = files
 
+    # Add extra for tracking
+    body["extra"] = {"create_from": "skill", "skill_name": SKILL_NAME}
+
     try:
         log_info(f"Sending message to task: {task_id}")
         response = requests.post(
@@ -689,6 +560,7 @@ def send_message(api_key, task_id, content, files=None, extra_headers=None):
             json=body,
             headers=headers,
             timeout=30,
+            allow_redirects=False,
         )
         log_request_id(response)
         if response.status_code != 200:
@@ -730,6 +602,7 @@ def get_messages(api_key, task_id, limit=10, cursor=None, extra_headers=None):
             headers=headers,
             params=params,
             timeout=30,
+            allow_redirects=False,
         )
         log_request_id(response)
         if response.status_code != 200:
@@ -754,6 +627,7 @@ def poll_messages(api_key, task_id, since_message_id, limit=10,
     log_info(f"Waiting for AI reply on task: {task_id}")
 
     start_time = time.time()
+    last_heartbeat = start_time
 
     while True:
         elapsed = time.time() - start_time
@@ -780,16 +654,25 @@ def poll_messages(api_key, task_id, since_message_id, limit=10,
                     snap_status = task_snapshot.get("status", "")
                     can_export = task_snapshot.get("can_export", False)
                     print(f"[SNAPSHOT] status={snap_status}, can_export={can_export}")
-                return msg
+                return result
+
+        now = time.time()
+        if now - last_heartbeat >= 30:
+            ts = datetime.now().strftime("%H:%M:%S")
+            mins = int(elapsed) // 60
+            secs = int(elapsed) % 60
+            snap_status = task_snapshot.get("status", "unknown")
+            print(f"[HEARTBEAT] {ts} | elapsed {mins}m{secs:02d}s | task_status: {snap_status}", flush=True)
+            last_heartbeat = now
 
         time.sleep(POLL_INTERVAL)
 
 
 def run_full_workflow(api_key, operation, prompt, output_dir, extra_headers=None,
-                      style=None, file_tokens=None, **kwargs):
+                      file_tokens=None, export_format=None):
     """Run the full workflow: create -> poll -> download."""
     task_id = create_task(api_key, operation, prompt, extra_headers=extra_headers,
-                          style=style, file_tokens=file_tokens, **kwargs)
+                          file_tokens=file_tokens, export_format=export_format)
     if not task_id:
         return False
 
@@ -806,30 +689,7 @@ def run_full_workflow(api_key, operation, prompt, output_dir, extra_headers=None
 def main():
     parser = argparse.ArgumentParser(
         description="AnyGen OpenAPI Client",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Create tasks for different operation types
-  python3 anygen.py create -o slide -p "A presentation about AI history"
-  python3 anygen.py create -o doc -p "Technical design document"
-  python3 anygen.py create -o smart_draw -p "System architecture diagram"
-  python3 anygen.py create -o website -p "Product landing page"
-
-  # Dialogue mode: analyze requirements first
-  python3 anygen.py prepare --message "I need a slide about our Q4 results"
-
-  # Upload a file for use in tasks
-  python3 anygen.py upload --file ./data.pdf
-
-  # Create task with uploaded file tokens
-  python3 anygen.py create -o slide -p "Summarize this report" --file-token tk_xxx
-
-  # Check task status (non-blocking)
-  python3 anygen.py status --task-id task_xxx
-
-  # Full workflow: create -> poll -> download
-  python3 anygen.py run -o slide -p "AI presentation" --output ./
-        """
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Commands")
@@ -850,8 +710,6 @@ Examples:
         help="Multi-turn requirement analysis before creating a task")
     add_common_args(prepare_parser)
     prepare_parser.add_argument("--message", "-m", help="User message text")
-    prepare_parser.add_argument("--file", action="append", dest="files",
-                                 help="File path to upload and attach (can be repeated)")
     prepare_parser.add_argument("--file-token", action="append", dest="file_tokens",
                                  help="File token (from upload). Can be repeated")
     prepare_parser.add_argument("--input", dest="input_file",
@@ -868,28 +726,15 @@ Examples:
                                choices=["slide", "doc", "smart_draw", "storybook", "data_analysis", "website", "finance", "deep_research", "ai_designer"],
                                help="Operation type")
     create_parser.add_argument("--prompt", "-p", required=True, help="Content prompt")
-    create_parser.add_argument("--language", "-l", help="Language (zh-CN, en-US)")
-    create_parser.add_argument("--slide-count", "-c", type=int, help="Number of slides")
-    create_parser.add_argument("--template", "-t", help="Slide template")
-    create_parser.add_argument("--ratio", "-r", choices=["16:9", "4:3"], help="Slide ratio")
-    create_parser.add_argument("--export-format", "-f", help="Export format (slide: pptx/image/thumbnail, doc: docx/image/thumbnail, smart_draw: drawio/excalidraw)")
-    create_parser.add_argument("--file", action="append", dest="files",
-                               help="Attachment file path (legacy base64, can be repeated)")
+    create_parser.add_argument("--export-format", "-f", help="Export format (smart_draw: drawio/excalidraw)")
     create_parser.add_argument("--file-token", action="append", dest="file_tokens",
                                help="File token from upload (can be repeated)")
-    create_parser.add_argument("--style", "-s", help="Style preference")
 
     # ---- poll command ----
     poll_parser = subparsers.add_parser("poll", help="Poll task status until completion and auto-download")
     add_common_args(poll_parser)
     poll_parser.add_argument("--task-id", required=True, help="Task ID to poll")
     poll_parser.add_argument("--output", help="Output directory for auto-download (omit to skip download)")
-
-    # ---- status command (non-blocking single query) ----
-    status_parser = subparsers.add_parser("status", help="Query task status once (non-blocking)")
-    add_common_args(status_parser)
-    status_parser.add_argument("--task-id", required=True, help="Task ID to query")
-    status_parser.add_argument("--json", action="store_true", dest="as_json", help="Output as JSON")
 
     # ---- download command ----
     download_parser = subparsers.add_parser("download", help="Download generated file")
@@ -904,6 +749,30 @@ Examples:
     thumbnail_parser.add_argument("--output", required=True, help="Output directory")
 
 
+    # ---- send-message command ----
+    send_msg_parser = subparsers.add_parser("send-message",
+        help="Send a message to an existing task (multi-turn conversation)")
+    add_common_args(send_msg_parser)
+    send_msg_parser.add_argument("--task-id", required=True, help="Task ID")
+    send_msg_parser.add_argument("--message", "-m", required=True, help="Message content")
+    send_msg_parser.add_argument("--file", action="append", dest="files",
+                                  help="File path to upload and attach (can be repeated)")
+    send_msg_parser.add_argument("--file-token", action="append", dest="file_tokens",
+                                  help="File token from upload (can be repeated)")
+
+    # ---- get-messages command ----
+    get_msgs_parser = subparsers.add_parser("get-messages",
+        help="Get messages for a task (supports polling and pagination)")
+    add_common_args(get_msgs_parser)
+    get_msgs_parser.add_argument("--task-id", required=True, help="Task ID")
+    get_msgs_parser.add_argument("--limit", type=int, default=10,
+                                  help="Number of messages to return (default: 10, max: 100)")
+    get_msgs_parser.add_argument("--cursor", help="Pagination cursor")
+    get_msgs_parser.add_argument("--wait", action="store_true",
+                                  help="Block and poll until a new assistant reply is completed")
+    get_msgs_parser.add_argument("--since-id", type=int, default=0,
+                                  help="Wait for assistant reply with id greater than this (used with --wait)")
+
     # ---- run command ----
     run_parser = subparsers.add_parser("run", help="Full workflow: create -> poll -> download")
     add_common_args(run_parser)
@@ -911,44 +780,17 @@ Examples:
                            choices=["slide", "doc", "smart_draw", "storybook", "data_analysis", "website", "finance", "deep_research", "ai_designer"],
                            help="Operation type")
     run_parser.add_argument("--prompt", "-p", required=True, help="Content prompt")
-    run_parser.add_argument("--language", "-l", help="Language (zh-CN, en-US)")
-    run_parser.add_argument("--slide-count", "-c", type=int, help="Number of slides")
-    run_parser.add_argument("--template", "-t", help="Slide template")
-    run_parser.add_argument("--ratio", "-r", choices=["16:9", "4:3"], help="Slide ratio")
-    run_parser.add_argument("--export-format", "-f", help="Export format (slide: pptx/image/thumbnail, doc: docx/image/thumbnail, smart_draw: drawio/excalidraw)")
-    run_parser.add_argument("--file", action="append", dest="files",
-                           help="Attachment file path (legacy base64)")
+    run_parser.add_argument("--export-format", "-f", help="Export format (smart_draw: drawio/excalidraw)")
     run_parser.add_argument("--file-token", action="append", dest="file_tokens",
                            help="File token from upload (can be repeated)")
-    run_parser.add_argument("--style", "-s", help="Style preference")
     run_parser.add_argument("--output", help="Output directory (optional)")
-
-    # ---- send-message command ----
-    send_msg_parser = subparsers.add_parser("send-message",
-                                            help="Send a message to an existing task (multi-turn)")
-    add_common_args(send_msg_parser)
-    send_msg_parser.add_argument("--task-id", required=True, help="Task ID")
-    send_msg_parser.add_argument("--message", "-m", required=True, help="Message content")
-    send_msg_parser.add_argument("--file-token", action="append", dest="file_tokens",
-                                  help="File token from upload (can be repeated)")
-
-    # ---- get-messages command ----
-    get_msgs_parser = subparsers.add_parser("get-messages",
-                                            help="Get messages for a task")
-    add_common_args(get_msgs_parser)
-    get_msgs_parser.add_argument("--task-id", required=True, help="Task ID")
-    get_msgs_parser.add_argument("--limit", type=int, default=10, help="Number of messages")
-    get_msgs_parser.add_argument("--wait", action="store_true",
-                                  help="Wait for AI reply (blocking)")
-    get_msgs_parser.add_argument("--since-id", type=int, default=0,
-                                  help="Only return messages after this ID")
 
     # ---- config command ----
     config_parser = subparsers.add_parser("config", help="Manage configuration")
     config_subparsers = config_parser.add_subparsers(dest="config_action", help="Config actions")
 
     config_set_parser = config_subparsers.add_parser("set", help="Set a config value")
-    config_set_parser.add_argument("key", choices=["api_key", "default_language"], help="Config key")
+    config_set_parser.add_argument("key", choices=["api_key", "default_language", "suite_recommended"], help="Config key")
     config_set_parser.add_argument("value", help="Config value")
 
     config_get_parser = config_subparsers.add_parser("get", help="Get a config value")
@@ -1036,21 +878,10 @@ Examples:
         if args.stdin:
             message = sys.stdin.read().strip()
 
-        # Upload files and collect file tokens
-        file_tokens = list(args.file_tokens or [])
-        if args.files:
-            for file_path in args.files:
-                log_info(f"Uploading file: {file_path}")
-                token = upload_file(api_key, file_path, extra_headers=extra_headers)
-                if token:
-                    file_tokens.append(token)
-                else:
-                    log_error(f"File upload failed, skipping: {file_path}")
-
         result = run_prepare_interactive(
             api_key=api_key,
             initial_message=message,
-            file_tokens=file_tokens if file_tokens else None,
+            file_tokens=args.file_tokens,
             input_file=args.input_file,
             save_file=args.save_file,
             extra_headers=extra_headers
@@ -1062,21 +893,11 @@ Examples:
             api_key=api_key,
             operation=args.operation,
             prompt=args.prompt,
-            language=args.language,
-            slide_count=args.slide_count,
-            template=args.template,
-            ratio=args.ratio,
             export_format=args.export_format,
-            files=args.files,
             file_tokens=args.file_tokens,
             extra_headers=extra_headers,
-            style=args.style
         )
         sys.exit(0 if task_id else 1)
-
-    elif args.command == "status":
-        task = query_task_status(api_key, args.task_id, extra_headers=extra_headers, as_json=args.as_json)
-        sys.exit(0 if task else 1)
 
     elif args.command == "poll":
         output_dir = getattr(args, 'output', None)
@@ -1094,6 +915,77 @@ Examples:
         success = download_thumbnail(api_key, args.task_id, args.output, extra_headers=extra_headers)
         sys.exit(0 if success else 1)
 
+    elif args.command == "send-message":
+        # Upload files if provided and build file references
+        files_payload = []
+        if args.file_tokens:
+            for ft in args.file_tokens:
+                files_payload.append({"file_token": ft})
+        if args.files:
+            for file_path in args.files:
+                log_info(f"Uploading file: {file_path}")
+                token = upload_file(api_key, file_path, extra_headers=extra_headers)
+                if token:
+                    files_payload.append({"file_token": token})
+                else:
+                    log_error(f"File upload failed, skipping: {file_path}")
+
+        result = send_message(
+            api_key=api_key,
+            task_id=args.task_id,
+            content=args.message,
+            files=files_payload if files_payload else None,
+            extra_headers=extra_headers,
+        )
+        sys.exit(0 if result else 1)
+
+    elif args.command == "get-messages":
+        if args.wait:
+            result = poll_messages(
+                api_key=api_key,
+                task_id=args.task_id,
+                since_message_id=args.since_id,
+                limit=args.limit,
+                extra_headers=extra_headers,
+            )
+            sys.exit(0 if result else 1)
+        else:
+            result = get_messages(
+                api_key=api_key,
+                task_id=args.task_id,
+                limit=args.limit,
+                cursor=args.cursor,
+                extra_headers=extra_headers,
+            )
+            if result:
+                messages = result.get("messages", [])
+                task_snapshot = result.get("task_snapshot", {})
+                has_more = result.get("has_more", False)
+
+                print(f"\n{'=' * 60}")
+                print(f"Messages ({len(messages)}):")
+                print(f"{'=' * 60}")
+                for msg in messages:
+                    role = msg.get("role", "unknown")
+                    content = msg.get("content", "")
+                    msg_id = msg.get("id", "?")
+                    status = msg.get("status", "?")
+                    print(f"  [{role}] (id={msg_id}, status={status}): {content[:200]}")
+
+                if task_snapshot:
+                    print(f"\nTask Snapshot:")
+                    print(f"  status={task_snapshot.get('status')}")
+                    print(f"  content_version={task_snapshot.get('content_version')}")
+                    print(f"  can_export={task_snapshot.get('can_export')}")
+
+                if has_more:
+                    next_cursor = result.get("cursor", "")
+                    print(f"\nMore messages available. Use --cursor {next_cursor}")
+
+                sys.exit(0)
+            else:
+                sys.exit(1)
+
     elif args.command == "run":
         success = run_full_workflow(
             api_key=api_key,
@@ -1101,60 +993,10 @@ Examples:
             prompt=args.prompt,
             output_dir=args.output,
             extra_headers=extra_headers,
-            language=args.language,
-            slide_count=args.slide_count,
-            template=args.template,
-            ratio=args.ratio,
-            export_format=args.export_format,
-            files=args.files,
             file_tokens=args.file_tokens,
-            style=args.style
+            export_format=args.export_format,
         )
         sys.exit(0 if success else 1)
-
-    elif args.command == "send-message":
-        files = None
-        if args.file_tokens:
-            files = [{"token": ft} for ft in args.file_tokens]
-        result = send_message(
-            api_key=api_key,
-            task_id=args.task_id,
-            content=args.message,
-            files=files,
-            extra_headers=extra_headers
-        )
-        sys.exit(0 if result else 1)
-
-    elif args.command == "get-messages":
-        if args.wait:
-            # Blocking wait for AI reply
-            msg = poll_messages(
-                api_key=api_key,
-                task_id=args.task_id,
-                since_message_id=args.since_id,
-                limit=args.limit,
-                extra_headers=extra_headers
-            )
-            sys.exit(0 if msg else 1)
-        else:
-            # Single query
-            result = get_messages(
-                api_key=api_key,
-                task_id=args.task_id,
-                limit=args.limit,
-                extra_headers=extra_headers
-            )
-            if result:
-                messages = result.get("messages", [])
-                for msg in messages:
-                    role = msg.get("role", "")
-                    content = msg.get("content", "")
-                    status = msg.get("status", "")
-                    msg_id = msg.get("id", "")
-                    print(f"[{role}] (id={msg_id}, status={status}) {content[:200]}")
-                sys.exit(0)
-            else:
-                sys.exit(1)
 
 
 if __name__ == "__main__":

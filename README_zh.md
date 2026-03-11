@@ -98,13 +98,8 @@
 |------|------|------|
 | --operation | -o | 操作类型：slide、doc、smart_draw、storybook、data_analysis、website、finance、deep_research |
 | --prompt | -p | 内容描述 |
-| --language | -l | 语言：zh-CN 或 en-US |
-| --slide-count | -c | PPT 页数 |
-| --template | -t | 幻灯片模板 |
-| --ratio | -r | 幻灯片比例：16:9 或 4:3 |
-| --style | -s | 风格偏好 |
 | --file-token | | 上传文件后获取的 file_token（可重复） |
-| --export-format | -f | 导出格式（slide/storybook: pptx/image/thumbnail, doc: docx/image/thumbnail, smart_draw: drawio/excalidraw） |
+| --export-format | -f | 导出格式（smart_draw: drawio/excalidraw） |
 
 ## 相关项目
 
@@ -112,7 +107,7 @@
 
 ## 详细文档
 
-查看 [SKILL.md](./SKILL.md) 获取完整文档。
+查看 [SKILL.md](anygen-suite/SKILL.md) 获取完整文档。
 
 ## 许可证
 

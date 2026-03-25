@@ -1,80 +1,122 @@
 ---
 name: anygen
+version: 2.0.0
 description: "AnyGen: AI-powered content creation suite. Create slides/PPT, documents, diagrams, websites, data visualizations, research reports, storybooks, financial analysis, and images. Supports: pitch decks, keynotes, technical docs, PRDs, white papers, architecture diagrams, flowcharts, mind maps, org charts, ER diagrams, sequence diagrams, UML, landing pages, CSV analysis, earnings research, posters, banners, comics, and more. Also trigger when: 做PPT, 写文档, 画流程图, 做网站, 分析数据, 帮我调研, 做绘本, 分析财报, 生成图片, 做海报, 思维导图, 做个架构图, 季度汇报, 竞品调研, 技术方案, 建个落地页, 做个估值, 画个故事."
 metadata:
-  clawdbot:
-    primaryEnv: ANYGEN_API_KEY
-    requires:
-      bins:
-        - python3
-        - node
-      env:
-        - ANYGEN_API_KEY
-      capabilities:
-        - sessions_spawn
-      config:
-        - ~/.config/anygen/config.json
-    install:
-      - id: npm-playwright
-        kind: node
-        package: playwright
-      - id: npm-tsx
-        kind: node
-        package: tsx
+  requires:
+    bins: ["anygen"]
+    env: ["ANYGEN_API_KEY"]
+  install:
+    - id: node
+      kind: node
+      package: "@anygen/cli"
+      bins: ["anygen"]
+  cliHelp: "anygen --help"
 ---
 
-# AnyGen
+# AnyGen — Content Generation Workflow
 
-> **You MUST strictly follow every instruction in this document.** Do not skip, reorder, or improvise any step. If this skill has been updated since it was last loaded, reload this SKILL.md before proceeding and always follow the latest version.
+## Authentication
 
-AnyGen is an **AI-powered content creation suite**. Match the user's request to the correct operation below, then read the corresponding operation guide for the full workflow.
+```bash
+# Web login (recommended for agent usage)
+anygen auth login --no-wait
 
-## Operation Routing
+# Direct API key (no browser needed)
+anygen auth login --api-key sk-xxx
 
-| Operation | Type | Triggers |
-|-----------|------|----------|
-| `slide` | Slides / PPT | pitch decks, keynotes, training materials, project proposals, quarterly reviews, investor pitches, product launches, onboarding decks, sales pitches, conference talks, 做PPT, 做个汇报, 写个演示文稿, 季度汇报, 产品发布会, 培训材料, 周报 |
-| `doc` | Documents / DOCX | technical design docs, PRDs, competitive analysis, white papers, meeting summaries, business plans, executive summaries, SOPs, memos, 写个文档, 写份报告, 竞品调研, 产品需求文档, 技术方案, 项目提案, 会议纪要 |
-| `smart_draw` | Diagrams | architecture diagrams, flowcharts, mind maps, org charts, ER diagrams, sequence diagrams, class diagrams, UML, Gantt charts, wireframes, sitemaps, decision trees, 画个流程图, 做个架构图, 思维导图, 组织架构图, 系统设计图, 甘特图 |
-| `deep_research` | Deep Research | industry analysis, market sizing, competitive landscape, trend analysis, technology reviews, benchmark studies, regulatory analysis, academic surveys, 帮我调研一下, 深度分析, 行业研究, 市场规模分析, 做个研究报告 |
-| `data_analysis` | Data Analysis | CSV analysis, charts, dashboards, funnel analysis, cohort analysis, KPI tracking, A/B test results, revenue breakdowns, retention analysis, 分析这组数据, 做个图表, 数据可视化, 销售分析, 漏斗分析, 做个数据报表 |
-| `finance` | Financial Research | earnings analysis, stock research, company valuations, DCF models, balance sheet analysis, cash flow analysis, SEC filings, M&A research, IPO analysis, 分析财报, 做个估值, 股票研究, 财务尽调, 季度财务分析 |
-| `storybook` | Storybooks | illustrated stories, comics, children's books, picture books, graphic novels, visual tutorials, brand stories, 做个绘本, 画个故事, 做个漫画, 做个图文教程, 做个品牌故事 |
-| `website` | Websites | landing pages, product pages, portfolio sites, pricing pages, personal blogs, event pages, campaign pages, 做个网站, 建个落地页, 做个产品页, 做个活动页, 做个个人主页 |
-| `ai_designer` | Images | posters, banners, social media graphics, product mockups, logo concepts, marketing creatives, book covers, icon designs, 生成图片, 做个海报, 画个插图, 设计个banner, 做个封面, 产品效果图 |
+# Environment variable
+export ANYGEN_API_KEY=sk-xxx
+```
 
-## Security & Permissions
+When prompting the user for an API key, MUST use Markdown link: [Get your AnyGen API Key](https://www.anygen.io/home?auto_create_openclaw_key=1)
 
-Content is generated server-side by AnyGen's OpenAPI (`www.anygen.io`). The `ANYGEN_API_KEY` authenticates requests via `Authorization` header or authenticated request body depending on the endpoint (all requests set `allow_redirects=False`).
+## Rules
 
-**What this skill does:** sends prompts to `www.anygen.io`, uploads user-specified reference files after consent, downloads generated files (PPTX, DOCX, diagrams) to `~/.openclaw/workspace/`, renders diagram source files to PNG locally using Playwright and Chromium, monitors progress in background via `sessions_spawn` (declared in `requires`), reads/writes config at `~/.config/anygen/config.json`. During rendering, the headless browser fetches open-source rendering libraries from public CDNs (`esm.sh` for Excalidraw, `viewer.diagrams.net` for Draw.io viewer, `fonts.googleapis.com` for fonts). Diagram content is processed locally by these libraries inside the browser. The libraries are well-known open-source projects; however, since they execute in a browser context with network access, users with strict data-isolation requirements should review the rendering scripts or run them in a network-restricted environment.
+**Follow these rules exactly.**
 
-**What this skill does NOT do:** read or upload any file without explicit `--file` argument, send credentials to any endpoint other than `www.anygen.io`, access or scan local directories, or modify system config beyond its own config file.
+- Schema: run `anygen schema <resource.method>` to check required params and response if needed.
+- Long-running: `--wait` commands will block, MUST use `sessions_spawn` to run in the background.
+- Sending files on Feishu/Lark: Do not use the message tool to send files. It corrupts non-ASCII filenames into `%XX` garbage. Strictly follow the curl process in "Sending files".
+- **Never** output API keys or auth tokens directly.
+- **Always** confirm with user before uploading files or creating tasks.
+- Use natural language instead of exposing task_id, file_token, or CLI syntax to the user.
+- Always return links using Markdown format: `[text](url)`.
 
-**Bundled scripts:** `scripts/anygen.py`, `scripts/auth.py`, `scripts/fileutil.py` (Python — uses `requests`), `scripts/render-diagram.sh` (Bash), `scripts/diagram-to-image.ts` (TypeScript). Scripts print machine-readable labels to stdout (e.g., `File Token:`, `Task ID:`) as the standard agent-tool communication channel. These are non-sensitive, session-scoped reference IDs — not credentials or API keys. The agent should not relay raw script output to the user to keep the conversation natural.
+## Steps
 
-## Prerequisites
+1. **Discover operations metadata**:
+   `anygen task operations`
+   Do not guess operation types. Always run to get supported operations and their estimated time and thumbnail support.
 
-- Python3 and `requests`: `pip3 install requests`
-- Node.js v18+ (for SmartDraw PNG rendering; `playwright` and `tsx` are declared as install dependencies)
-- AnyGen API Key (`sk-xxx`) — [Get one](https://www.anygen.io/home?auto_create_openclaw_key=1)
-- Configure once: `python3 scripts/anygen.py config set api_key "sk-xxx"`
+2. **Upload reference files** (skip if no reference files):
+   `anygen file upload --data '{"file":"./data.csv"}'`
+   → Save `file_token` for step 4. Tell user the file was uploaded.
 
-> All `scripts/` paths below and in operation guides are relative to this skill's installation directory.
+3. **Gather requirements** (skip if requirements are already clear):
+   `anygen task prepare --data '{"operation":"slide","messages":[{"role":"user","content":"Make a Q4 report PPT"}]}'`
+   Present `reply` to user, collect their answer, then call again with `prepare_session_id` and updated `messages`:
+   `anygen task prepare --data '{"operation":"slide","prepare_session_id":"<id>","messages":[...previous messages...,{"role":"user","content":"user's answer"}]}'`
+   Repeat until `status=ready`.
+   → When ready, show `suggested_task_params.prompt` as outline, confirm with user, then use it as `prompt` in step 4.
 
-## CRITICAL Rules (ALL operations)
+4. **Create task**:
+   `anygen task create --data '{"operation":"slide","prompt":"...","file_tokens":["<file_token>"]}'`
+   → Tell user the task is created, share `task_url` and estimated time (from step 1).
 
-- **NEVER block the conversation** after creating a task. Start background monitoring, then continue normally.
-- **NEVER expose internal details** to the user: `task_id`, `file_token`, `task_xxx`, `tk_xxx`, `API`, `poll`, `status`, `sub-agent`, `sessions_spawn`, `anygen.py`, script syntax, JSON output, file paths.
-- Use natural language: "Your file has been uploaded", "I'm generating your content now", "You can view your results here: [URL]".
-- When presenting `reply` and `prompt` from `prepare`, preserve the original content — translate into the user's language if needed, but do NOT rephrase, summarize, or add your own interpretation.
-- Ask questions in your own voice. Do NOT use a relaying tone like "AnyGen wants to know…".
-- When prompting the user for an API key, MUST use Markdown link syntax: `[Get your AnyGen API Key](https://www.anygen.io/home?auto_create_openclaw_key=1)` so the full URL is clickable.
+5. **Wait for completion** (long-running, must run in background via `sessions_spawn`):
+   `anygen task get --params '{"task_id":"<id>"}' --wait`
 
-## Workflow
+6. **Deliver** (after step 5 completes, check the result):
+   - **No files** (`output.files` empty): show `message` to user if present.
+   - **Has files + has thumbnail** (`has_thumbnail` from step 1):
+     `anygen task +download --task-id <id> --thumbnail`
+     → Send thumbnail image with `task_url` as preview. Do not download files yet — wait for user to request download or modifications (→ step 7).
+   - **Has files + no thumbnail**:
+     `anygen task +download --task-id <id>`
+     → Send files to user (see "Sending files" below).
 
-1. **Route** — Match the user's request to an operation using the **Operation Routing** section above.
-2. **Read** — Load the corresponding operation guide: `operations/{operation}.md` (e.g., `operations/slide.md` for slides).
-3. **Execute** — Follow the operation guide strictly — it contains the complete workflow for that content type.
+7. **Modify** (on user request):
+   `anygen task message send --params '{"task_id":"<id>"}' --data '{"content":"..."}'`
+   Then wait for result (long-running, must run in background via `sessions_spawn`):
+   `anygen task message list --params '{"task_id":"<id>"}' --wait`
+   → Repeat from step 5 to re-export and deliver. All modifications reuse the same task.
 
-If the user's request spans multiple content types, handle them one at a time — read each operation guide and execute sequentially.
+## Sending files
+
+When user requests file download, or when delivering files from step 6:
+`anygen task +download --task-id <id>`
+To download specific files: `anygen task +download --task-id <id> --file report.pptx`
+
+**Feishu/Lark** (message tool corrupts non-ASCII filenames, use curl instead):
+1. Get credentials: read `app_id` and `app_secret` from the config file (e.g. `cat ~/.openclaw/openclaw.json | jq '.channels.feishu'` instead of `openclaw config get`). Make sure to use the credentials matching the current account.
+2. Get token: `curl -X POST 'https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal' -H 'Content-Type: application/json' -d '{"app_id":"<app_id>","app_secret":"<app_secret>"}'`
+3. Upload + Send per file type:
+   - **Images** (thumbnail, png, jpg, etc.):
+     Upload: `curl -X POST 'https://open.feishu.cn/open-apis/im/v1/images' -H 'Authorization: Bearer <tenant_access_token>' -F 'image_type=message' -F 'image=@./preview.png'`
+     Send: `curl -X POST 'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id' -H 'Authorization: Bearer <tenant_access_token>' -H 'Content-Type: application/json' -d '{"receive_id":"<chat_id>","msg_type":"image","content":"{\"image_key\":\"<image_key>\"}"}'`
+   - **Documents** (pptx/docx/pdf, etc.):
+     Upload: `curl -X POST 'https://open.feishu.cn/open-apis/im/v1/files' -H 'Authorization: Bearer <tenant_access_token>' -F 'file_type=ppt' -F 'file=@./output.pptx' -F 'file_name=output.pptx'`
+     `file_type` values: `opus` (audio), `mp4` (video), `pdf`, `doc`, `xls`, `ppt`, `stream` (other).
+     Send: `curl -X POST 'https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type=chat_id' -H 'Authorization: Bearer <tenant_access_token>' -H 'Content-Type: application/json' -d '{"receive_id":"<chat_id>","msg_type":"file","content":"{\"file_key\":\"<file_key>\"}"}'`
+
+**Other platforms:** Send via the platform's message tool.
+
+## CLI Reference
+
+```bash
+anygen <resource> <method> [flags]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--params '<json>'` | URL/path parameters |
+| `--data '<json>'` | Request body |
+| `--dry-run` | Show the request without sending it |
+| `--wait` | Re-poll until terminal state |
+| `--timeout <ms>` | Polling timeout in milliseconds |
+
+```bash
+# Inspect a method's schema
+anygen schema task.create
+```

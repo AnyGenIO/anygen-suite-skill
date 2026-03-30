@@ -48,7 +48,7 @@ const SCAN_FILE_EXTENSIONS = new Set([
 // ─── Skill registry ─────────────────────────────────────────────────────────
 
 const SKILLS = [
-  { dir: 'anygen-suite', clawhub: 'anygen-skill', claude: 'anygen', name: 'AnyGen Suite' },
+  { dir: 'anygen-suite', clawhub: 'anygen-skill', claude: 'anygen', name: 'AnyGen Suite', desc: 'AI-powered content creation suite. Create slides/PPT, documents, diagrams, websites, data visualizations, research reports, storybooks, financial analysis, and images using AnyGen.' },
 ]
 
 const CLAUDE_DIR = join(process.env.HOME, '.claude', 'skills')
@@ -137,22 +137,25 @@ function listSkillFiles(dir) {
   return results
 }
 
-async function publishViaApi(slug, displayName, version, skillDir, config) {
+async function publishViaApi(slug, displayName, version, skillDir, config, description) {
   const files = listSkillFiles(skillDir)
   if (files.length === 0) throw new Error('No files found')
   if (!files.some(f => f.relPath.toLowerCase() === 'skill.md')) {
     throw new Error('SKILL.md required')
   }
 
-  const form = new FormData()
-  form.set('payload', JSON.stringify({
+  const payload = {
     slug,
     displayName,
     version,
     changelog: '',
     acceptLicenseTerms: true,
     tags: ['latest'],
-  }))
+  }
+  if (description) payload.description = description
+
+  const form = new FormData()
+  form.set('payload', JSON.stringify(payload))
 
   for (const file of files) {
     const content = readFileSync(file.fullPath)
@@ -1227,7 +1230,7 @@ async function cmdPublish(skills, method = 'cli', fixedVersion = null) {
     if (method === 'api') {
       console.log(`  ${DIM}[API] POST /api/v1/skills  slug=${p.clawhub}  version=${p.nextVer}${R}`)
     } else {
-      console.log(`  ${DIM}clawhub publish "${src}" --slug "${p.clawhub}" --version "${p.nextVer}"${R}`)
+      console.log(`  ${DIM}clawhub publish "${src}" --slug "${p.clawhub}" --version "${p.nextVer}"${p.desc ? ` --description "..."` : ''}${R}`)
     }
   }
   console.log()
@@ -1248,7 +1251,7 @@ async function cmdPublish(skills, method = 'cli', fixedVersion = null) {
     if (method === 'api') {
       try {
         const config = readClawHubConfig()
-        const result = await publishViaApi(p.clawhub, p.name, p.nextVer, src, config)
+        const result = await publishViaApi(p.clawhub, p.name, p.nextVer, src, config, p.desc)
         ok(`${p.clawhub} v${p.nextVer} published. (versionId: ${result.versionId})`)
         published++
       } catch (e) {
@@ -1256,7 +1259,8 @@ async function cmdPublish(skills, method = 'cli', fixedVersion = null) {
         failed++
       }
     } else {
-      const result = run(`clawhub publish "${src}" --slug "${p.clawhub}" --version "${p.nextVer}"`)
+      const descFlag = p.desc ? ` --description "${p.desc.replace(/"/g, '\\"')}"` : ''
+      const result = run(`clawhub publish "${src}" --slug "${p.clawhub}" --version "${p.nextVer}"${descFlag}`)
       if (result !== null) {
         ok(`${p.clawhub} v${p.nextVer} published.`)
         published++
